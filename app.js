@@ -8,11 +8,22 @@ var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
 
 var index = require('./routes/index');
-var users = require('./routes/users');
+// var users = require('./routes/users');
 
 import config from 'config-lite';
 import session from 'express-session';
 import connectMongo from 'connect-mongo';
+import router from './routes/router.js';
+
+// 业务
+import db from './mongodb/db.js';
+import dtime from 'time-formater'
+import IDModel from './models/id.js'
+import ChatModel from './models/chat.js'
+import UserModel from './models/user.js'
+
+
+import history from 'connect-history-api-fallback';
 
 var app = express();
 // view engine setup
@@ -56,31 +67,10 @@ app.all('*', (req, res, next) => {
 });
 
 
-
 app.use('/', index);
 // app.use('/users', users);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+router(app)
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
@@ -113,9 +103,64 @@ app.set('port', port);
 
 /**
  * Create HTTP server.
+ * 用下面的方法去创建server
  */
 
-var server = http.createServer(app);
+// var server = http.createServer(app);
+
+const server = http.Server(app);
+
+/**
+ * socket 
+ */
+const io = require('socket.io')(server);
+const users = {};
+io.on('connection', socket => {
+  // console.log(socket);
+  console.log('a user connected')
+  socket.on("chat", async (msg) => {
+    let { user_id, content } = msg;
+    content = content.trim();
+    try {
+      if (!user_id) {
+        throw new Error('用户ID参数错误')
+      } else if (!content) {
+        throw new Error('发表对话信息错误')
+      }
+    } catch (err) {
+      console.log(err.message, err);
+    }
+    content = content.substring(0, 100);
+    let chatObj;
+    try {
+      const user = await UserModel.findOne({ id: user_id });
+      const ID = await IDModel.findOne()
+      ID.chat_id++;
+      await ID.save()
+      chatObj = {
+        id: ID.chat_id,
+        username: user.name,
+        avatar: user.avatar,
+        user_id,
+        time: dtime().format('YYYY-MM-DD HH:mm:ss'),
+        content,
+      }
+      await ChatModel.create(chatObj)
+    } catch (err) {
+      console.log('保存聊天数据失败', err);
+    }
+    io.emit("chat", chatObj);
+  });
+  // 这里要看前端怎么提交东西上来
+  socket.on('chat message', function (msg) {
+    console.log('message: ' + msg);
+    io.emit("chat message", '我自己会收到吗'); // 只有其他人会收到
+  });
+
+  socket.on('disconnect', function(){
+    console.log('user disconnected');
+  });
+});
 
 /**
  * Listen on provided port, on all network interfaces.
@@ -185,4 +230,5 @@ function onListening() {
   debug('Listening on ' + bind);
 }
 
+app.use(history()); // 这个不知道有啥用
 module.exports = app;
