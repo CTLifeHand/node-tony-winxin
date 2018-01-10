@@ -4,6 +4,7 @@ const router = express.Router();
 
 router.get('/question', async (req, res, next) => {
     const question = req.query.question;
+    console.log(question);
     let requestConfig = {
         method: 'GET',
         headers: {
